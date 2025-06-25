@@ -43,9 +43,9 @@ const getCanvasSize = ratio => {
   switch (ratio) {
     case "9:16": return "1080x1920";
     case "1:1":  return "1080x1080";
-    case "16:9": return "1920x1080";
+    case "4:5": return "1080x1350";
     default:
-      return /^\d+x\d+$/.test(ratio) ? ratio : "1920x1080";
+      return /^\d+x\d+$/.test(ratio) ? ratio : "1080x1080";
   }
 };
 
@@ -53,7 +53,7 @@ const getCanvasSize = ratio => {
 // │  MAIN ENTRY POINT   │
 // ╰─────────────────────╯
 async function composeDynamic(payload = {}) {
-  const { elements = [], ratio = "16:9" } = payload;
+  const { elements = [], ratio = "1:1" } = payload;
 
   if (!Array.isArray(elements) || elements.length === 0) {
     throw new Error("'elements' must be a non-empty array");
@@ -65,6 +65,7 @@ async function composeDynamic(payload = {}) {
 
   const ts        = Date.now();
   const canvasSz  = getCanvasSize(ratio);
+  //const canvasSz  = getCanvasSize("1:1");
   const outputImg = path.join(OUT_DIR, `output_${ts}.png`);
   const tempFiles = [];                                 // for later cleanup
 
@@ -72,6 +73,8 @@ async function composeDynamic(payload = {}) {
   const inputs  = [`-f lavfi -i "color=c=black:s=${canvasSz}"`]; // [0:v]
   const filters = [];
   let   prev    = "[0:v]";
+
+  console.error("🚫 ratio", ratio);
 
   elements.forEach((el, idx) => {
     if (el.Type === "Image" && typeof el.Value === "string") {
@@ -97,7 +100,8 @@ async function composeDynamic(payload = {}) {
       const size = Number.isFinite(el.FontSize) ? el.FontSize : 48;
       const x    = Number.isFinite(el.xpos) ? el.xpos : 0;
       const y    = Number.isFinite(el.ypos) ? el.ypos : 0;
-
+      console.error("🚫 el.FontSize", el.FontSize);
+      console.error("🚫 size", size);
       filters.push(
         `${prev} drawtext=` +
         `fontfile='${FONT_PATH}':text='${safe}':` +
