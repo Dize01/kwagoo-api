@@ -2,6 +2,8 @@
 const express = require("express");
 const { composeImage } = require("./utils/ImageComposer");
 const { composeTest } = require("./utils/test");
+const { composeDynamic } = require("./utils/DynamicComposer");
+
 
 const PORT = process.env.PORT || 3000;
 const app  = express();
@@ -26,6 +28,17 @@ app.post("/composetest", async (req, res) => {
     res.json({ result: combinedString });
   } catch (err) {
     console.error("🔥  /composetest error:", err.message);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ───── /composetest
+app.post("/composedynamic", async (req, res) => {
+  try {
+    const combinedString = composeDynamic(req.body);
+    res.json({ result: combinedString });
+  } catch (err) {
+    console.error("🔥  /composedynamic error:", err.message);
     res.status(400).json({ error: err.message });
   }
 });

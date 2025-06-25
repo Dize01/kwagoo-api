@@ -15,6 +15,11 @@ function composeTest(payload = {}) {
   return new Promise((resolve, reject) => {
     const { elements = [] } = payload;
 
+    //Get Time
+    const now = new Date();
+    const nowText = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${now.getSeconds().toString().padStart(2, '0')}`;
+    // Example: "20250625_234559"
+
     // 🔍 Step 1: Validate that `elements` is an array
     if (!Array.isArray(elements)) {
       console.error("🚫 elements is not an array:", elements);
@@ -26,6 +31,36 @@ function composeTest(payload = {}) {
       el => el.Type === "Text" && typeof el.Value === "string"
     );
 
+    // 🔍 Step 2b: Collect all Image elements with a valid base64 string
+    const imageElements = elements.filter(
+      el => el.Type === "Image" && typeof el.Value === "string"
+    );
+
+    const tempDir = path.resolve(__dirname, "../temp"); // root-level temp folder
+
+    // create the folder once if it doesn’t exist
+    if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
+
+
+    const inputImagePaths = []; // keep track of the files we create
+
+    imageElements.forEach((imgEl, idx) => {
+      try {
+        const base64Data = imgEl.Value;          // raw base-64 (no prefix)
+        const filename   = `temp_${nowText}_${idx + 1}.png`;
+        const filePath   = path.join(tempDir, filename);
+
+        // write the decoded buffer to disk
+        fs.writeFileSync(filePath, Buffer.from(base64Data, "base64"));
+
+        inputImagePaths.push(filePath);          // store for later use
+        console.log(`🖼️  Saved ${filePath}`);
+      } catch (err) {
+        console.error(`💥 Failed to write image #${idx + 1}:`, err);
+      }
+    });
+
+
     // ❌ If no valid Text element was found, exit early
     if (!textElement) {
       console.error("🚫 No valid text element found in:", elements);
@@ -36,7 +71,8 @@ function composeTest(payload = {}) {
     const text = textElement.Value || "Untitled"; // fallback text
     const fontPath = "C:/Windows/Fonts/arial.ttf"; // font used for drawing text (update for Ubuntu/Mac)
     const defaultBg = path.resolve(__dirname, "default.png"); // background image
-    const outputImg = path.resolve(__dirname, "../output/output.png"); // output path
+    const outputfilename   = `output${nowText}.png`;
+    const outputImg = path.resolve(__dirname, "../output/" + outputfilename); // output path
 
     // 📌 Use x/y positions from the element if provided, otherwise fallback to default
     const xpos = Number.isFinite(textElement.xpos) ? textElement.xpos : X_POS;
