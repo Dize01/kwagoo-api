@@ -78,22 +78,32 @@ async function composeDynamic(payload = {}) {
 
   elements.forEach((el, idx) => {
     if (el.Type === "Image" && typeof el.Value === "string") {
-      // 2a) Decode Base64 ➜ temp PNG
       const tempName = `img_${ts}_${idx}.png`;
       const tempPath = path.join(TEMP_DIR, tempName);
       fs.writeFileSync(tempPath, Buffer.from(stripDataPrefix(el.Value), "base64"));
       tempFiles.push(tempPath);
 
-      // 2b) Push as next FFmpeg input
-      inputs.push(`-i "${tempPath}"`);
-      const curr = `[${inputs.length - 1}:v]`;                 // label
+      inputs.push(`-i "${tempPath}"`);          // adds new input -> label [N:v]
+      const raw    = `[${inputs.length - 1}:v]`;
+      const labelS = `[scl${idx}]`;             // label after (optional) scale
+      const labelO = `[v${idx}]`;               // label after overlay
 
-      const x = Number.isFinite(el.xpos) ? el.xpos : 0;
-      const y = Number.isFinite(el.ypos) ? el.ypos : 0;
-      filters.push(
-        `${prev}${curr} overlay=${x}:${y} [v${idx}]`
-      );
-      prev = `[v${idx}]`;
+      // optional width / height (keep aspect if only one is supplied)
+      const w = Number.isFinite(el.Width)  ? el.Width  : -1;
+      const h = Number.isFinite(el.Height) ? el.Height : -1;
+
+      if (Number.isFinite(el.Width) || Number.isFinite(el.Height)) {
+        // ① scale raw -> sclN
+        filters.push(`${raw} scale=${w}:${h} ${labelS}`);
+      }
+
+      const src = (Number.isFinite(el.Width) || Number.isFinite(el.Height)) ? labelS : raw;
+      const x   = Number.isFinite(el.xpos) ? el.xpos : 0;
+      const y   = Number.isFinite(el.ypos) ? el.ypos : 0;
+
+      // ② overlay (canvas so far = prev) + (src image) -> vN
+      filters.push(`${prev}${src} overlay=${x}:${y} ${labelO}`);
+      prev = labelO;
 
     } else if (el.Type === "Text" && typeof el.Value === "string") {
       const safe = escapeFFmpegText(el.Value);
