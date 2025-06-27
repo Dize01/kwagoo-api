@@ -35,13 +35,15 @@ app.post("/composetest", async (req, res) => {
 // ───── /composetest
 app.post("/composedynamic", async (req, res) => {
   try {
-    const combinedString = composeDynamic(req.body);
-    res.json({ result: combinedString });
+    const buffer = await composeDynamic(req.body);     // ✅ await the image Buffer
+    res.set("Content-Type", "image/png");              // ✅ Tell Postman it's an image
+    res.send(buffer);                                  // ✅ Send it as response
   } catch (err) {
     console.error("🔥  /composedynamic error:", err.message);
     res.status(400).json({ error: err.message });
   }
 });
+
 
 app.listen(PORT, () => {
   console.log(`✅  kwagooAPI running at http://localhost:${PORT}`);
