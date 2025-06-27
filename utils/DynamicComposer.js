@@ -41,12 +41,23 @@ const escapeFFmpegText = str =>
 
 const getCanvasSize = ratio => {
   switch (ratio) {
-    case "9:16": return "1080x1920";
-    case "1:1":  return "1080x1080";
-    case "4:5": return "1080x1350";
+    case "9:16":  return "1080x1920";  // 📱 Instagram Stories, Reels, TikTok (portrait)
+    case "1:1":   return "1080x1080";  // 🟦 Instagram posts, profile images (square)
+    case "4:5":   return "1080x1350";  // 🖼 Instagram portrait feed posts (max height)
+    case "16:9":  return "1920x1080";  // 🎥 YouTube, widescreen video (landscape)
+    case "2:3":   return "1080x1620";  // 📌 Pinterest pins, mobile screens (portrait)
+    case "3:4":   return "1080x1440";  // 🗂 Presentation slides, mobile photos
+    case "3:2":   return "1620x1080";  // 📷 DSLR photography, laptops (landscape)
+    case "21:9":  return "2520x1080";  // 🖥 Ultrawide monitors, cinematic formats
+    case "5:7":   return "1080x1512";  // 🖨 Portrait photography prints
+    case "5:4":   return "1350x1080";  // 🖼 Classic photo frames, legacy monitors
+
     default:
-      return /^\d+x\d+$/.test(ratio) ? ratio : "1080x1080";
+      return /^\d+x\d+$/.test(ratio)
+        ? ratio                       // 🧩 Support raw "1080x1600" input
+        : "1080x1080";                // 🔁 Fallback to square (1:1)
   }
+
 };
 
 // ╭─────────────────────╮
@@ -70,7 +81,7 @@ async function composeDynamic(payload = {}) {
   const tempFiles = [];                                 // for later cleanup
 
   // ── 2. Build FFmpeg input list & filter_complex ─────────────────────────────
-  const inputs  = [`-f lavfi -i "color=c=black:s=${canvasSz}"`]; // [0:v]
+  const inputs  = [`-f lavfi -i "color=c=white:s=${canvasSz}"`]; // [0:v]
   const filters = [];
   let   prev    = "[0:v]";
 
@@ -83,28 +94,39 @@ async function composeDynamic(payload = {}) {
       fs.writeFileSync(tempPath, Buffer.from(stripDataPrefix(el.Value), "base64"));
       tempFiles.push(tempPath);
 
-      inputs.push(`-i "${tempPath}"`);          // adds new input -> label [N:v]
+      inputs.push(`-i "${tempPath}"`);
       const raw    = `[${inputs.length - 1}:v]`;
-      const labelS = `[scl${idx}]`;             // label after (optional) scale
-      const labelO = `[v${idx}]`;               // label after overlay
+      const labelS = `[scl${idx}]`;
+      const labelO = `[v${idx}]`;
 
-      // optional width / height (keep aspect if only one is supplied)
-      const w = Number.isFinite(el.Width)  ? el.Width  : -1;
-      const h = Number.isFinite(el.Height) ? el.Height : -1;
+      let filterChain = null;
 
-      if (Number.isFinite(el.Width) || Number.isFinite(el.Height)) {
-        // ① scale raw -> sclN
-        filters.push(`${raw} scale=${w}:${h} ${labelS}`);
+      const hasW = Number.isFinite(el.Width);
+      const hasH = Number.isFinite(el.Height);
+      const canvasHeight = parseInt(canvasSz.split("x")[1], 10);
+
+      if (hasW && hasH) {
+        // Scale directly to both
+        filterChain = `${raw} scale=${el.Width}:${el.Height} ${labelS}`;
+      } else if (hasW && !hasH) {
+        // Scale height to maintain aspect, then crop width
+        //filterChain = `${raw} scale=-1:${canvasHeight},crop=${el.Width}:ih ${labelS}`;
+        filterChain = `${raw} scale=${el.Width}:-1,crop=${el.Width}:ih ${labelS}`;
+      } else if (!hasW && hasH) {
+        // Scale width to maintain aspect, then crop height
+        filterChain = `${raw} scale=iw:-1,crop=iw:${el.Height} ${labelS}`;
+      } else {
+        // Neither provided: scale to canvas height
+        filterChain = `${raw} scale=-1:${canvasHeight} ${labelS}`;
       }
 
-      const src = (Number.isFinite(el.Width) || Number.isFinite(el.Height)) ? labelS : raw;
-      const x   = Number.isFinite(el.xpos) ? el.xpos : 0;
-      const y   = Number.isFinite(el.ypos) ? el.ypos : 0;
+      filters.push(filterChain);
 
-      // ② overlay (canvas so far = prev) + (src image) -> vN
-      filters.push(`${prev}${src} overlay=${x}:${y} ${labelO}`);
+      const x = Number.isFinite(el.xpos) ? el.xpos : 0;
+      const y = Number.isFinite(el.ypos) ? el.ypos : 0;
+
+      filters.push(`${prev}${labelS} overlay=${x}:${y} ${labelO}`);
       prev = labelO;
-
     } else if (el.Type === "Text" && typeof el.Value === "string") {
       const safe = escapeFFmpegText(el.Value);
       const size = Number.isFinite(el.FontSize) ? el.FontSize : 48;
