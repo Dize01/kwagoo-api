@@ -3,7 +3,7 @@ const express = require("express");
 const { composeImage } = require("./utils/ImageComposer");
 const { composeTest } = require("./utils/test");
 const { composeDynamic } = require("./utils/DynamicComposer");
-
+const { composeVideo } = require("./utils/VideoComposer");
 
 const PORT = process.env.PORT || 3000;
 const app  = express();
@@ -45,6 +45,16 @@ app.post("/composedynamic", async (req, res) => {
   }
 });
 
+app.post("/composevideo", async (req, res) => {
+  try {
+    const buffer = await composeVideo(req.body);
+    res.set("Content-Type", "video/mp4");
+    res.send(buffer);
+  } catch (err) {
+    console.error("🔥  /composevideo error:", err.message);
+    res.status(400).json({ error: err.message });
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`✅  kwagooAPI running at http://localhost:${PORT}`);
