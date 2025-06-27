@@ -13,10 +13,11 @@ app.use(express.json({ limit: "20mb" }));
 // ───── /composeimage
 app.post("/composeimage", async (req, res) => {
   try {
-    const combinedString = composeImage(req.body);
-    res.json({ result: combinedString });
+    const buffer = await composeImage(req.body);     // ✅ await the image Buffer
+    res.set("Content-Type", "image/png");              // ✅ Tell Postman it's an image
+    res.send(buffer);                                  // ✅ Send it as response
   } catch (err) {
-    console.error("🔥  /composeimage error:", err.message);
+    console.error("🔥  /composeImage error:", err.message);
     res.status(400).json({ error: err.message });
   }
 });
