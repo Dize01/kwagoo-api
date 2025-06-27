@@ -153,7 +153,7 @@ async function composeDynamic(payload = {}) {
   try {
     await execAsync(cmd);                                 // Run FFmpeg
     const buffer = await fs.promises.readFile(outputImg); // Read PNG from disk
-    await fs.promises.unlink(outputImg);                  // ✅ Delete after reading
+    //await fs.promises.unlink(outputImg);                  // ✅ Delete after reading
     return buffer;                                         // Return to caller
   } finally {
     // Clean up temp image files (inputs)
