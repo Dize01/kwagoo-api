@@ -1,180 +1,197 @@
-// ────────────────────────────────────────────────────────────────────────────────
 // DynamicComposer.js
-// This module dynamically composes an image from an array of image/text layers
-// using FFmpeg. Layers are applied in order with custom size and position support.
-// Returns the final image as a Buffer.
+// Build an image by applying an ordered mix of Image-overlays and Text-overlays
+// in **one** FFmpeg pass. Supports custom sizing, positioning, alignment, wrapping,
+// and per-element fonts. Returns the final image as a Buffer.
 //
-// Install dependencies: npm install ffmpeg-static
+// Install deps: npm install ffmpeg-static
 // ────────────────────────────────────────────────────────────────────────────────
 
-const ffmpegPath = require("ffmpeg-static");          // Path to FFmpeg binary
+const ffmpegPath = require("ffmpeg-static");
 const { exec }   = require("child_process");
 const util       = require("util");
 const fs         = require("fs");
 const path       = require("path");
 
-const execAsync  = util.promisify(exec);              // Convert exec to Promise-based
+const execAsync  = util.promisify(exec);
 
-// ────────────────────────────────────────────────────────────────────────────────
-// CONFIGURATION
-// ────────────────────────────────────────────────────────────────────────────────
-const TEMP_DIR   = path.resolve(__dirname, "../temp");    // Temporary files directory
-const OUT_DIR    = path.resolve(__dirname, "../output");  // Output images directory
-
-// Path to font file (Windows/Mac/Linux compatible)
-const FONT_PATH  = process.platform === "win32"
+const TEMP_DIR  = path.resolve(__dirname, "../temp");
+const OUT_DIR   = path.resolve(__dirname, "../output");
+const DEFAULT_FONT = process.platform === "win32"
   ? "C:/Windows/Fonts/arial.ttf"
   : "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf";
 
-// ────────────────────────────────────────────────────────────────────────────────
-// UTILITY FUNCTIONS
-// ────────────────────────────────────────────────────────────────────────────────
-const ensureDir = dir => fs.mkdirSync(dir, { recursive: true });  // Create folder if missing
-
+// Helpers
+const ensureDir = dir => fs.mkdirSync(dir, { recursive: true });
 const stripDataPrefix = str => str.replace(/^data:image\/[a-z]+;base64,?/i, "");
+const escapeFFmpegText = s =>
+  s.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/:/g, "\\:");
 
-const escapeFFmpegText = str =>
-  str.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/:/g, "\\:");
+function wrapLines(str, maxChars) {
+  const words = str.split(" ");
+  const lines = [];
+  let cur = "";
+  for (const w of words) {
+    const test = (cur + " " + w).trim();
+    if (test.length > maxChars) {
+      lines.push(cur.trim());
+      cur = w;
+    } else {
+      cur = test;
+    }
+  }
+  if (cur) lines.push(cur.trim());
+  return lines;
+}
 
-// Maps common ratios to canvas dimensions (width x height)
 const getCanvasSize = ratio => {
   switch (ratio) {
-    case "9:16":  return "1080x1920";  // Instagram Stories, TikTok
-    case "1:1":   return "1080x1080";  // Square posts
-    case "4:5":   return "1080x1350";  // Instagram portrait posts
-    case "16:9":  return "1920x1080";  // YouTube thumbnail, widescreen
-    case "2:3":   return "1080x1620";  // Pinterest pins, mobile screens
-    case "3:4":   return "1080x1440";  // Presentations, print
-    case "3:2":   return "1620x1080";  // DSLR photography
-    case "21:9":  return "2520x1080";  // Ultrawide screen
-    case "5:7":   return "1080x1512";  // Portrait prints
-    case "5:4":   return "1350x1080";  // Legacy displays
+    case "9:16": return "1080x1920";
+    case "1:1":  return "1080x1080";
+    case "4:5":  return "1080x1350";
+    case "16:9": return "1920x1080";
+    // add more if needed
     default:
-      return /^\d+x\d+$/.test(ratio)
-        ? ratio                         // Custom string like "1080x1600"
-        : "1080x1080";                  // Default fallback to square
+      return /^\d+x\d+$/.test(ratio) ? ratio : "1080x1080";
   }
 };
 
-// ────────────────────────────────────────────────────────────────────────────────
-// MAIN FUNCTION: Compose an image from dynamic layers
-// ────────────────────────────────────────────────────────────────────────────────
 async function composeDynamic(payload = {}) {
   const { elements = [], ratio = "1:1" } = payload;
-
   if (!Array.isArray(elements) || elements.length === 0) {
     throw new Error("'elements' must be a non-empty array");
   }
 
-  // Prepare workspace
   ensureDir(TEMP_DIR);
   ensureDir(OUT_DIR);
 
-  const ts         = Date.now();
-  const canvasSz   = getCanvasSize(ratio);
-  const outputImg  = path.join(OUT_DIR, `output_${ts}.png`);
-  const tempFiles  = [];
+  const ts        = Date.now();
+  const canvasSz  = getCanvasSize(ratio);
+  const outputImg = path.join(OUT_DIR, `output_${ts}.png`);
+  const tempFiles = [];
 
-  // Create initial canvas background (white)
-  const inputs     = [`-f lavfi -i "color=c=white:s=${canvasSz}"`]; // Input 0
-  const filters    = [];
-  let   prevLabel  = "[0:v]";  // Initial canvas
+  // start with blank white canvas
+  const inputs = [`-f lavfi -i color=c=white:s=${canvasSz}`];
+  const filters = [];
+  let prev = "[0:v]";
 
-  // Process each element in order
   elements.forEach((el, idx) => {
     if (el.Type === "Image" && typeof el.Value === "string") {
-      // Save base64 image as temp file
-      const tempName = `img_${ts}_${idx}.png`;
-      const tempPath = path.join(TEMP_DIR, tempName);
-      fs.writeFileSync(tempPath, Buffer.from(stripDataPrefix(el.Value), "base64"));
-      tempFiles.push(tempPath);
+      // decode and save
+      const imgName = `img_${ts}_${idx}.png`;
+      const imgPath = path.join(TEMP_DIR, imgName);
+      fs.writeFileSync(imgPath, Buffer.from(stripDataPrefix(el.Value), "base64"));
+      tempFiles.push(imgPath);
 
-      // Add image as FFmpeg input
-      inputs.push(`-i "${tempPath}"`);
-      const raw    = `[${inputs.length - 1}:v]`;
-      const labelS = `[scl${idx}]`; // scaled image
-      const labelO = `[v${idx}]`;   // output after overlay
+      inputs.push(`-i "${imgPath}"`);
+      const raw = `[${inputs.length - 1}:v]`;
+      const scaled = `[s${idx}]`;
+      const overlaid = `[v${idx}]`;
 
-      // Scaling & cropping logic
+      // scale/crop
       const hasW = Number.isFinite(el.Width);
       const hasH = Number.isFinite(el.Height);
-      const canvasHeight = parseInt(canvasSz.split("x")[1], 10);
-      let filterChain = null;
-
+      const canvasH = parseInt(canvasSz.split("x")[1], 10);
+      let chain;
       if (hasW && hasH) {
-        filterChain = `${raw} scale=${el.Width}:${el.Height} ${labelS}`;
-      } else if (hasW && !hasH) {
-        filterChain = `${raw} scale=${el.Width}:-1,crop=${el.Width}:ih ${labelS}`;
-      } else if (!hasW && hasH) {
-        filterChain = `${raw} scale=iw:-1,crop=iw:${el.Height} ${labelS}`;
+        chain = `${raw} scale=${el.Width}:${el.Height} ${scaled}`;
+      } else if (hasW) {
+        chain = `${raw} scale=${el.Width}:-1,crop=${el.Width}:ih ${scaled}`;
+      } else if (hasH) {
+        chain = `${raw} scale=-1:${el.Height},crop=iw:${el.Height} ${scaled}`;
       } else {
-        filterChain = `${raw} scale=-1:${canvasHeight} ${labelS}`;
+        chain = `${raw} scale=-1:${canvasH} ${scaled}`;
       }
+      filters.push(chain);
 
-      filters.push(filterChain);
-
+      // overlay
       const x = Number.isFinite(el.xpos) ? el.xpos : 0;
       const y = Number.isFinite(el.ypos) ? el.ypos : 0;
-      filters.push(`${prevLabel}${labelS} overlay=${x}:${y} ${labelO}`);
-      prevLabel = labelO;
+      filters.push(`${prev}${scaled} overlay=${x}:${y} ${overlaid}`);
+      prev = overlaid;
 
     } else if (el.Type === "Text" && typeof el.Value === "string") {
-      // Safely escape text content
-      const safe = escapeFFmpegText(el.Value);
-      const size = Number.isFinite(el.FontSize) ? el.FontSize : 48;
-      const x    = Number.isFinite(el.xpos) ? el.xpos : 0;
-      const y    = Number.isFinite(el.ypos) ? el.ypos : 0;
+      // wrapping
+      const maxChars = Number.isFinite(el.MaxLineLength) ? el.MaxLineLength : 30;
+      const lines = wrapLines(el.Value, maxChars);
 
-      // Render text layer
-      filters.push(
-        `${prevLabel} drawtext=` +
-        `fontfile='${FONT_PATH}':text='${safe}':` +
-        `fontcolor=white:fontsize=${size}:x=${x}:y=${y} [v${idx}]`
-      );
-      prevLabel = `[v${idx}]`;
+      // font
+      const style = el.FontStyle || null;
+      const fontFile = style
+        ? (process.platform === "win32"
+            ? `C:/Windows/Fonts/${style}.ttf`
+            : `/usr/share/fonts/truetype/dejavu/${style}.ttf`)
+        : DEFAULT_FONT;
+      const escFont = fontFile.replace(/\\/g, "\\\\").replace(/:/g, "\\:");
+
+      // settings
+      const size  = Number.isFinite(el.FontSize) ? el.FontSize : 48;
+      const color = el.FontColor || "white";
+      const baseY = Number.isFinite(el.ypos) ? el.ypos : 10;
+      const align = (el.align || "left").toLowerCase();
+
+      if (align === "center" || align === "right") {
+        // draw each line
+        const lh = Math.round(size * 1.2);
+        lines.forEach((ln, i) => {
+          const safe = escapeFFmpegText(ln);
+          const yPos = baseY + i * lh;
+          const xExpr = align === "center"
+            ? "(w-text_w)/2"
+            : "w-text_w-10";
+          const lbl = `[t${idx}_${i}]`;
+          filters.push(
+            `${prev} drawtext=` +
+            `fontfile='${escFont}':text='${safe}':` +
+            `fontcolor=${color}:fontsize=${size}:` +
+            `x=${xExpr}:y=${yPos} ${lbl}`
+          );
+          prev = lbl;
+        });
+      } else {
+        // left‐aligned block
+        const txtName = `txt_${ts}_${idx}.txt`;
+        const txtPath = path.join(TEMP_DIR, txtName);
+        fs.writeFileSync(txtPath, lines.join("\n"), "utf8");
+        tempFiles.push(txtPath);
+        const escTxt = txtPath.replace(/\\/g, "\\\\").replace(/:/g, "\\:");
+
+        const xExpr = Number.isFinite(el.xpos) ? el.xpos : 10;
+        const lbl = `[t${idx}]`;
+        filters.push(
+          `${prev} drawtext=textfile='${escTxt}':` +
+          `fontfile='${escFont}':fontcolor=${color}:` +
+          `fontsize=${size}:x=${xExpr}:y=${baseY} ${lbl}`
+        );
+        prev = lbl;
+      }
     }
   });
 
-  // Final output label
-  filters.push(`${prevLabel} copy[out]`);
+  // finalize
+  filters.push(`${prev} copy[out]`);
 
-  // Build and execute FFmpeg command
   const cmd = [
     `"${ffmpegPath}" -y`,
     ...inputs,
     `-filter_complex "${filters.join(";")}"`,
     "-map [out]",
-    "-frames:v 1", // Output a single image
+    "-frames:v 1",
     `"${outputImg}"`
   ].join(" ");
 
-  console.log("▶️  FFmpeg command:\n", cmd);
+  console.log("▶️ FFmpeg command:", cmd);
 
-  try {
-    await execAsync(cmd);                                 // Run FFmpeg
-    const buffer = await fs.promises.readFile(outputImg); // Read PNG from disk
-    //await fs.promises.unlink(outputImg);                  // ✅ Delete after reading
-    return buffer;                                         // Return to caller
-  } finally {
-    // Clean up temp image files (inputs)
-    tempFiles.forEach(f => fs.unlink(f, () => {}));
-  }
+try {
+  await execAsync(cmd);
+  return await fs.promises.readFile(outputImg);
+} catch (err) {
+  console.error("🔥 FFmpeg execution failed:", err.stderr || err.message || err);
+  throw err;
+} finally {
+  tempFiles.forEach(f => fs.unlink(f, () => {}));
+  fs.unlinkSync(outputImg);
+}
 
 }
 
-// ────────────────────────────────────────────────────────────────────────────────
-// EXPORT FUNCTION
-// ────────────────────────────────────────────────────────────────────────────────
 module.exports = { composeDynamic };
-
-/* ================================================================================
-  EXAMPLE PAYLOAD STRUCTURE:
-  {
-    "ratio": "9:16",
-    "elements": [
-      { "Type": "Image", "Value": "<base64_1>", "xpos": 0,   "ypos": 0 },
-      { "Type": "Image", "Value": "<base64_2>", "xpos": 200, "ypos": 400 },
-      { "Type": "Text",  "Value": "Hello",      "xpos": 100, "ypos": 300, "FontSize": 64 }
-    ]
-  }
-=============================================================================== */
