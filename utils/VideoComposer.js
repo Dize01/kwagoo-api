@@ -156,10 +156,11 @@ async function composeVideo(payload = {}) {
     ...inputs,
     `-filter_complex "${filterComplex}"`,
     ...maps,
-    `-c:v libx264 -crf 23 -preset veryfast`,
+    `-c:v libx264 -crf 30 -preset slow`,
     `-c:a aac`
   ];
-
+      //`-c:v libx264 -crf 23 -preset veryfast`,
+      //`-c:v libx264 -crf 30 -preset slow`,
   // if we have an external audio track, stop when it ends
   if (audio) {
     cmdParts.push(`-shortest`);
