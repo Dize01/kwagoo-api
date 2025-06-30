@@ -1,4 +1,11 @@
 // VideoComposer.js
+// Dynamically composes a video with optional text overlays and custom audio track
+// using FFmpeg. Accepts base64 `video`, optional base64 `audio`, and an array of
+// `elements` (text layers). Returns the final video as a Buffer.
+//
+// Install deps: npm install ffmpeg-static
+// ────────────────────────────────────────────────────────────────────────────────
+
 const ffmpegPath = require("ffmpeg-static");
 const { exec }   = require("child_process");
 const util       = require("util");
@@ -11,16 +18,20 @@ const TEMP_DIR = path.resolve(__dirname, "../temp");
 const OUT_DIR  = path.resolve(__dirname, "../output");
 const ensureDir = dir => fs.mkdirSync(dir, { recursive: true });
 
-// Strip base64 data URI prefix
+const DEFAULT_FONT = process.platform === "win32"
+  ? "C:/Windows/Fonts/arial.ttf"
+  : "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf";
+
+// Strip any data:*;base64, prefix
 const stripBase64Prefix = str =>
-  str.replace(/^data:video\/[a-z]+;base64,?/i, "");
+  str.replace(/^data:.*;base64,?/, "");
 
-// Escape special characters for drawtext
-const escapeFFmpegText = str =>
-  str.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/:/g, "\\:");
+// Escape special chars for FFmpeg drawtext
+const escapeFFmpegText = s =>
+  s.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/:/g, "\\:");
 
-// Split string into words and wrap into lines of maxChars
-function wrapText(str, maxChars) {
+// Split text into lines ≤ maxChars
+function wrapLines(str, maxChars) {
   const words = str.split(" ");
   const lines = [];
   let cur = "";
@@ -38,117 +49,140 @@ function wrapText(str, maxChars) {
 }
 
 async function composeVideo(payload = {}) {
-  const { video, elements = [] } = payload;
+  const { video, audio, elements = [] } = payload;
   if (!video || !elements.length) {
-    throw new Error("Must include base64 `video` and at least one text element");
+    throw new Error("Payload must include base64 `video` and at least one text element");
   }
 
   ensureDir(TEMP_DIR);
   ensureDir(OUT_DIR);
 
-  const ts      = Date.now();
-  const inPath  = path.join(TEMP_DIR, `in_${ts}.mp4`);
-  const outPath = path.join(OUT_DIR,  `out_${ts}.mp4`);
+  const ts        = Date.now();
+  const videoPath = path.join(TEMP_DIR, `input_${ts}.mp4`);
+  const audioPath = audio ? path.join(TEMP_DIR, `audio_${ts}.mp3`) : null;
+  const outputPath= path.join(OUT_DIR,  `output_${ts}.mp4`);
 
-  // 1) Save incoming video
-  fs.writeFileSync(inPath, Buffer.from(stripBase64Prefix(video), "base64"));
+  const tempFiles = [videoPath];
+  const textFiles = [];
 
-  // 2) Build filter_complex chains
+  // Write video file
+  fs.writeFileSync(videoPath, Buffer.from(stripBase64Prefix(video), "base64"));
+
+  // Write audio file if provided
+  if (audio) {
+    fs.writeFileSync(audioPath, Buffer.from(stripBase64Prefix(audio), "base64"));
+    tempFiles.push(audioPath);
+  }
+
+  // Build filter_complex for text overlays
   const chains    = [];
   let   prevLabel = "[0:v]";
-  const textFiles = [];
 
   elements.forEach((el, idx) => {
     if (el.Type !== "Text" || typeof el.Value !== "string") return;
 
-    // common metrics
-    const fontSize  = Number.isFinite(el.FontSize) ? el.FontSize : 48;
-    const fontColor = el.FontColor   || "white";
-    const baseY     = Number.isFinite(el.ypos)     ? el.ypos : 10;
-    const maxChars  = Number.isFinite(el.MaxLineLength) ? el.MaxLineLength : 40;
-    const align     = (el.align || "left").toLowerCase();
+    // Text settings
+    const fontSize = Number.isFinite(el.FontSize) ? el.FontSize : 48;
+    const fontColor= el.FontColor   || "white";
+    const baseY    = Number.isFinite(el.ypos)     ? el.ypos     : 10;
+    const maxChars = Number.isFinite(el.MaxLineLength) ? el.MaxLineLength : 40;
+    const align    = (el.align || "left").toLowerCase();
 
-    // wrap into lines
-    const lines = wrapText(el.Value, maxChars);
+    // Wrap into lines
+    const lines = wrapLines(el.Value, maxChars);
 
-    // resolve per-element font style
-    const style    = el.FontStyle || (process.platform === "win32" ? "arial" : "DejaVuSans");
-    const fontFileRaw = process.platform === "win32"
-      ? `C:/Windows/Fonts/${style}.ttf`
-      : `/usr/share/fonts/truetype/dejavu/${style}.ttf`;
-    const escFont = fontFileRaw.replace(/\\/g, "\\\\").replace(/:/g, "\\:");
+    // Resolve font file
+    const style    = el.FontStyle || null;
+    const fontFile = style
+      ? (process.platform === "win32"
+          ? `C:/Windows/Fonts/${style}.ttf`
+          : `/usr/share/fonts/truetype/dejavu/${style}.ttf`)
+      : DEFAULT_FONT;
+    const escFont  = fontFile.replace(/\\/g, "\\\\").replace(/:/g, "\\:");
 
-    if (align === "center" || align === "right") {
-      // draw each line individually for center/right
-      const lineHeight = Math.round(fontSize * 1.2);
-      lines.forEach((line, i) => {
-        const safeLine = escapeFFmpegText(line);
-        const yPos     = baseY + i * lineHeight;
-        const xExpr    = align === "center" ? "(w-text_w)/2" : "w-text_w-10";
-        const nextLabel = `[v${idx}_${i}]`;
+    const lineHeight = Math.round(fontSize * 1.2);
 
-        chains.push(
-          `${prevLabel}` +
-          `drawtext=fontfile='${escFont}'` +
-          `:text='${safeLine}'` +
-          `:fontcolor=${fontColor}` +
-          `:fontsize=${fontSize}` +
-          `:x=${xExpr}` +
-          `:y=${yPos}` +
-          `${nextLabel}`
-        );
-        prevLabel = nextLabel;
-      });
+    // Draw each line separately (center/right/left)
+    lines.forEach((ln, i) => {
+      const safeText = escapeFFmpegText(ln);
+      const yPos     = baseY + i * lineHeight;
 
-    } else {
-      // left: write all lines to temp .txt and draw as block
-      const txtPath = path.join(TEMP_DIR, `txt_${ts}_${idx}.txt`);
-      fs.writeFileSync(txtPath, lines.join("\n"), "utf8");
-      textFiles.push(txtPath);
-      const escTxt = txtPath.replace(/\\/g, "\\\\").replace(/:/g, "\\:");
+      let xExpr;
+      if (align === "center") {
+        xExpr = "(w-text_w)/2";
+      } else if (align === "right") {
+        xExpr = "w-text_w-10";
+      } else {
+        xExpr = Number.isFinite(el.xpos) ? el.xpos : 10;
+      }
 
-      const xExpr = "10";
-      const nextLabel = `[v${idx}]`;
-
+      const label = `[t${idx}_${i}]`;
       chains.push(
         `${prevLabel}` +
-        `drawtext=textfile='${escTxt}'` +
-        `:fontfile='${escFont}'` +
+        `drawtext=fontfile='${escFont}'` +
+        `:text='${safeText}'` +
         `:fontcolor=${fontColor}` +
         `:fontsize=${fontSize}` +
         `:x=${xExpr}` +
-        `:y=${baseY}` +
-        `${nextLabel}`
+        `:y=${yPos}` +
+        `${label}`
       );
-      prevLabel = nextLabel;
-    }
+      prevLabel = label;
+    });
   });
 
-  // final copy to [out]
+  // Final copy to [out]
   chains.push(`${prevLabel}copy[out]`);
   const filterComplex = chains.join(";");
 
-  // 3) Assemble FFmpeg command
-  const cmd = [
-    `"${ffmpegPath}" -y`,
-    `-i "${inPath}"`,
-    `-filter_complex "${filterComplex}"`,
-    `-map "[out]"`,
-    `-map 0:a?`,
-    `-c:v libx264 -crf 23 -preset veryfast`,
-    `-c:a aac`,
-    `"${outPath}"`
-  ].join(" ");
+  // Pull desired length (in seconds) from payload
+  const { length } = payload;  // e.g. payload.length = 10
 
+  // 3) Assemble inputs and maps
+  const inputs = [
+    ...(audio ? ["-stream_loop", "-1"] : []),
+    `-i "${videoPath}"`,
+    ...(audio ? [`-i "${audioPath}"`] : [])
+  ];
+
+  const maps = [
+    `-map "[out]"`,
+    audio ? `-map 1:a` : `-map 0:a?`
+  ];
+
+  // 4) Build ffmpeg command in parts
+  const cmdParts = [
+    `"${ffmpegPath}" -y`,
+    ...inputs,
+    `-filter_complex "${filterComplex}"`,
+    ...maps,
+    `-c:v libx264 -crf 23 -preset veryfast`,
+    `-c:a aac`
+  ];
+
+  // if we have an external audio track, stop when it ends
+  if (audio) {
+    cmdParts.push(`-shortest`);
+  }
+
+  // if user specified a length, cut the output to that duration
+  if (Number.isFinite(length) && length > 0) {
+    cmdParts.push(`-t ${length}`);
+  }
+
+  // finally, write to disk
+  cmdParts.push(`"${outputPath}"`);
+
+  const cmd = cmdParts.join(" ");
   console.log("▶️ FFmpeg command:\n", cmd);
 
-  // 4) Execute & cleanup
+
+  // Execute & cleanup
   try {
     const { stderr } = await execAsync(cmd);
     if (stderr) console.error("⚠️ FFmpeg stderr:\n", stderr);
 
-    const buffer = await fs.promises.readFile(outPath);
-    await fs.promises.unlink(outPath).catch(() => {});
+    const buffer = await fs.promises.readFile(outputPath);
     return buffer;
 
   } catch (err) {
@@ -156,8 +190,11 @@ async function composeVideo(payload = {}) {
     throw err;
 
   } finally {
-    fs.unlink(inPath,    () => {});
-    textFiles.forEach(f => fs.unlink(f, () => {}));
+    // remove temp files
+    tempFiles.forEach(f => fs.unlinkSync(f));
+    textFiles.forEach(f => fs.unlinkSync(f));
+    // optionally remove output: 
+    fs.unlinkSync(outputPath);
   }
 }
 

@@ -45,10 +45,16 @@ function wrapLines(str, maxChars) {
 
 const getCanvasSize = ratio => {
   switch (ratio) {
-    case "9:16": return "1080x1920";
-    case "1:1":  return "1080x1080";
-    case "4:5":  return "1080x1350";
-    case "16:9": return "1920x1080";
+    case "9:16":  return "1080x1920";  // Instagram Stories, TikTok
+    case "1:1":   return "1080x1080";  // Square posts
+    case "4:5":   return "1080x1350";  // Instagram portrait posts
+    case "16:9":  return "1920x1080";  // YouTube thumbnail, widescreen
+    case "2:3":   return "1080x1620";  // Pinterest pins, mobile screens
+    case "3:4":   return "1080x1440";  // Presentations, print
+    case "3:2":   return "1620x1080";  // DSLR photography
+    case "21:9":  return "2520x1080";  // Ultrawide screen
+    case "5:7":   return "1080x1512";  // Portrait prints
+    case "5:4":   return "1350x1080";  // Legacy displays
     // add more if needed
     default:
       return /^\d+x\d+$/.test(ratio) ? ratio : "1080x1080";
