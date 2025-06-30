@@ -43,7 +43,8 @@ app.post("/composetest", async (req, res) => {
 app.post("/composedynamic", async (req, res) => {
   try {
     const buffer = await composeDynamic(req.body);
-    res.type("png").send(buffer);
+    res.set("Content-Type", "image/png");              // ✅ Tell Postman it's an image
+    res.send(buffer);  ;   
   } catch (err) {
     console.error("🔥 /composedynamic error:", err.message);
     res.status(400).json({ error: err.message });
@@ -54,7 +55,8 @@ app.post("/composedynamic", async (req, res) => {
 app.post("/composevideo", async (req, res) => {
   try {
     const buffer = await composeVideo(req.body);
-    res.type("mp4").send(buffer);
+    res.set("Content-Type", "video/mp4");
+    res.send(buffer);
   } catch (err) {
     console.error("🔥 /composevideo error:", err.message);
     res.status(400).json({ error: err.message });
