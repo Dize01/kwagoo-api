@@ -1,5 +1,8 @@
 # dependencies
 /node_modules
 
-# temp files
-/temp
+# ignore everything under temp/
+/temp/*
+
+# except this placeholder
+!/temp/.gitkeep
