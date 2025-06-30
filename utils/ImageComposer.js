@@ -18,7 +18,7 @@ const TEMP_DIR  = path.resolve(__dirname, "../temp");
 const OUT_DIR   = path.resolve(__dirname, "../output");
 const DEFAULT_FONT = process.platform === "win32"
   ? "C:/Windows/Fonts/arial.ttf"
-  : "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf";
+  : "/usr/share/fonts/truetype/msttcorefonts/arial.ttf";
 
 // Helpers
 const ensureDir = dir => fs.mkdirSync(dir, { recursive: true });
@@ -125,7 +125,7 @@ async function composeImage(payload = {}) {
       const fontFile = style
         ? (process.platform === "win32"
             ? `C:/Windows/Fonts/${style}.ttf`
-            : `/usr/share/fonts/truetype/dejavu/${style}.ttf`)
+            : `/usr/share/fonts/truetype/msttcorefonts/${style}.ttf`)
         : DEFAULT_FONT;
       const escFont = fontFile.replace(/\\/g, "\\\\").replace(/:/g, "\\:");
 

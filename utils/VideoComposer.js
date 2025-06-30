@@ -20,7 +20,7 @@ const ensureDir = dir => fs.mkdirSync(dir, { recursive: true });
 
 const DEFAULT_FONT = process.platform === "win32"
   ? "C:/Windows/Fonts/arial.ttf"
-  : "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf";
+  : "/usr/share/fonts/truetype/msttcorefonts/arial.ttf";
 
 // Strip any data:*;base64, prefix
 const stripBase64Prefix = str =>
@@ -96,7 +96,7 @@ async function composeVideo(payload = {}) {
     const fontFile = style
       ? (process.platform === "win32"
           ? `C:/Windows/Fonts/${style}.ttf`
-          : `/usr/share/fonts/truetype/dejavu/${style}.ttf`)
+          : `/usr/share/fonts/truetype/msttcorefonts/${style}.ttf`)
       : DEFAULT_FONT;
     const escFont  = fontFile.replace(/\\/g, "\\\\").replace(/:/g, "\\:");
 

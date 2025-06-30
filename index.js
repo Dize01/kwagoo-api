@@ -5,7 +5,7 @@ const { composeTest } = require("./utils/test");
 const { composeDynamic } = require("./utils/DynamicComposer");
 const { composeVideo } = require("./utils/VideoComposer");
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 4000;
 const app  = express();
 
 app.use(express.json({ limit: "20mb" }));
