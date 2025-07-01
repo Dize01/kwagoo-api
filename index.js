@@ -7,6 +7,9 @@ const { composeDynamic } = require("./utils/DynamicComposer");
 const { composeVideo }   = require("./utils/VideoComposer");
 const { createContainer }= require("./utils/Container");
 const { uploadVideo }    = require("./utils/VideoUploader");
+const { uploadAudio }    = require("./utils/AudioUploader");
+const { createVideo }    = require("./utils/CreateVideo");
+
 
 const PORT = process.env.PORT || 4000;
 const app  = express();
@@ -92,6 +95,38 @@ app.post(
     }
   }
 );
+
+// ───── /uploadaudio  ← multer middleware applied here
+app.post(
+  "/uploadaudio",
+  upload.single("audio"),      // look for form-field “audio”
+  async (req, res) => {
+    try {
+      // containerId from a text field, file buffer from multer
+      const result = await uploadAudio({
+        containerId: req.body.containerId,
+        file:        req.file
+      });
+      res.json(result);
+    } catch (err) {
+      console.error("🔥 /uploadaudio error:", err.message);
+      res.status(400).json({ error: err.message });
+    }
+  }
+);
+
+// ───── /createvideo
+app.post("/createvideo", async (req, res) => {
+  try {
+    const buffer = await createVideo(req.body);
+    res.set("Content-Type", "video/mp4");
+    res.send(buffer);
+  } catch (err) {
+    console.error("🔥 /createvideo error:", err.message);
+    res.status(400).json({ error: err.message });
+  }
+});
+
 
 app.listen(PORT, () => {
   console.log(`✅  kwagooAPI running at http://localhost:${PORT}`);

@@ -1,11 +1,12 @@
+// utils/AudioUploader.js
 const fs   = require("fs").promises;
 const path = require("path");
 
-async function uploadVideo({ containerId, file }) {
+async function uploadAudio({ containerId, file }) {
   // 1️⃣ Validate inputs
   if (!containerId) throw new Error("Missing containerId");
   if (!file || !file.originalname || !file.buffer) {
-    throw new Error("Missing or invalid file upload");
+    throw new Error("Missing or invalid audio file upload");
   }
 
   // 2️⃣ Resolve your app’s temp/containerId folder
@@ -19,15 +20,14 @@ async function uploadVideo({ containerId, file }) {
     throw new Error(`Container not found: ${containerPath}`);
   }
 
-  // 4️⃣ Rename the file to "video" with original extension
-  const ext = path.extname(file.originalname);        // e.g., ".mp4"
-  const outputFileName = `video${ext}`;               // → "video.mp4"
+  // 4️⃣ Rename the file to "audio" with original extension
+  const ext = path.extname(file.originalname);        // e.g., ".mp3"
+  const outputFileName = `audio${ext}`;               // → "audio.mp3"
   const outputPath = path.join(containerPath, outputFileName);
 
-  // 5️⃣ Write file and overwrite if it already exists
-  await fs.writeFile(outputPath, file.buffer);
+  await fs.writeFile(outputPath, file.buffer);        // ✅ This will replace existing file
 
-  // 6️⃣ Return a JSON‐serializable result
+  // 5️⃣ Return a JSON‐serializable result
   return {
     containerId,
     fileName:  outputFileName,
@@ -35,4 +35,4 @@ async function uploadVideo({ containerId, file }) {
   };
 }
 
-module.exports = { uploadVideo };
+module.exports = { uploadAudio };
