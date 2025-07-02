@@ -128,9 +128,12 @@ async function createVideo(payload = {}) {
     ...inputs,
     `-filter_complex "${filterComplex}"`,
     ...maps,
-    `-c:v libx264 -crf 23 -preset veryfast`,
-    `-c:a aac`
+    `-c:v libx264 -profile:v baseline -level 3.1 -pix_fmt yuv420p`, // important for compatibility
+    `-crf 23 -preset veryfast`,
+    `-c:a aac -b:a 128k -ar 48000`, // audio format for Instagram
+    `-movflags +faststart`,         // enables proper streaming upload
   ];
+
 
   if (audioPath) {
     cmdParts.push(`-shortest`);
