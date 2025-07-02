@@ -57,8 +57,9 @@ async function createVideo(payload = {}) {
 
   ensureDir(OUT_DIR);
 
-  const chains = [];
-  let prevLabel = "[0:v]";
+  const chains = [`[0:v]scale=1080:1920[scaled]`]; // exact 9:16
+  let prevLabel = "[scaled]";
+
 
   elements.forEach((el, idx) => {
     if (el.Type !== "Text" || typeof el.Value !== "string") return;
@@ -128,11 +129,13 @@ async function createVideo(payload = {}) {
     ...inputs,
     `-filter_complex "${filterComplex}"`,
     ...maps,
-    `-c:v libx264 -profile:v baseline -level 3.1 -pix_fmt yuv420p`, // important for compatibility
+    `-c:v libx264 -profile:v baseline -level 3.1 -pix_fmt yuv420p`, // <– required pixel format
+    `-r 30`,                      // frame rate
     `-crf 23 -preset veryfast`,
-    `-c:a aac -b:a 128k -ar 48000`, // audio format for Instagram
-    `-movflags +faststart`,         // enables proper streaming upload
+    `-c:a aac -b:a 128k -ar 48000`,
+    `-movflags +faststart`
   ];
+
 
 
   if (audioPath) {
