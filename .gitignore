@@ -6,3 +6,9 @@
 
 # except this placeholder
 !/temp/.gitkeep
+
+# ignore everything under temp/
+/output/*
+
+# except this placeholder
+!/output/.gitkeep

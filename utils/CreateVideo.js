@@ -44,7 +44,8 @@ async function createVideo(payload = {}) {
 
   const containerPath = path.join(TEMP_DIR, containerId.toString());
   const videoPath = path.join(containerPath, "video.mp4");
-  const outputPath = path.join(OUT_DIR, `output_${Date.now()}.mp4`);
+  const outputPath = path.join(OUT_DIR, `${containerId}.mp4`);
+
 
   const audioPath = fs.existsSync(path.join(containerPath, "audio.mp3"))
     ? path.join(containerPath, "audio.mp3")
@@ -146,15 +147,19 @@ async function createVideo(payload = {}) {
   try {
     const { stderr } = await execAsync(cmd);
     if (stderr) console.error("⚠️ FFmpeg stderr:\n", stderr);
+    return {
+      containerId,
+      url: `https://api2.kwagoo.com/output/${containerId}.mp4`
+    };
 
-    const buffer = await fs.promises.readFile(outputPath);
-    return buffer;
+    //const buffer = await fs.promises.readFile(outputPath);
+    //return buffer;
   } catch (err) {
     console.error("🔥 FFmpeg failed:", err.stderr || err.message);
     throw err;
   } finally {
     try {
-      await fs.promises.unlink(outputPath);
+      //await fs.promises.unlink(outputPath);
     } catch {}
   }
 }

@@ -1,4 +1,5 @@
 // index.js
+const path = require("path"); // make sure this is already at the top
 const express = require("express");
 const multer  = require("multer");
 const { composeImage }   = require("./utils/ImageComposer");
@@ -13,6 +14,10 @@ const { createVideo }    = require("./utils/CreateVideo");
 
 const PORT = process.env.PORT || 4000;
 const app  = express();
+
+// ✅ Make output folder publicly accessible
+app.use("/output", express.static(path.join(__dirname, "output")));
+
 
 // keep JSON parser for your other endpoints
 app.use(express.json({ limit: "20mb" }));
@@ -118,9 +123,11 @@ app.post(
 // ───── /createvideo
 app.post("/createvideo", async (req, res) => {
   try {
-    const buffer = await createVideo(req.body);
-    res.set("Content-Type", "video/mp4");
-    res.send(buffer);
+    //const buffer = await createVideo(req.body);
+    //res.set("Content-Type", "video/mp4");
+    //res.send(buffer);
+    const result = await createVideo(req.body);
+    res.json(result); // now sending JSON instead of binary video
   } catch (err) {
     console.error("🔥 /createvideo error:", err.message);
     res.status(400).json({ error: err.message });
