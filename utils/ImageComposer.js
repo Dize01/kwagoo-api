@@ -72,7 +72,7 @@ async function composeImage(payload = {}) {
 
   const ts        = Date.now();
   const canvasSz  = getCanvasSize(ratio);
-  const outputImg = path.join(OUT_DIR, `output_${ts}.png`);
+  const outputImg = path.join(OUT_DIR, `${ts}.png`);
   const tempFiles = [];
 
   // start with blank white canvas
@@ -189,13 +189,20 @@ async function composeImage(payload = {}) {
 
 try {
   await execAsync(cmd);
-  return await fs.promises.readFile(outputImg);
+  //return await fs.promises.readFile(outputImg);
+
+  const fileName = path.basename(outputImg);
+  console.log(" File name " + fileName);
+  return {
+    url: `/output/${fileName}`
+  };
+
 } catch (err) {
   console.error("🔥 FFmpeg execution failed:", err.stderr || err.message || err);
   throw err;
 } finally {
   tempFiles.forEach(f => fs.unlink(f, () => {}));
-  fs.unlinkSync(outputImg);
+  //fs.unlinkSync(outputImg);
 }
 
 }

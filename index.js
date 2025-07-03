@@ -28,8 +28,10 @@ const upload = multer({ storage: multer.memoryStorage() });
 // ───── /composeimage
 app.post("/composeimage", async (req, res) => {
   try {
-    const buffer = await composeImage(req.body);
-    res.type("png").send(buffer);
+    const result = await composeImage(req.body);
+    //res.type("png").send(buffer);
+    //const result = await createVideo(req.body);
+    res.json(result); // now sending JSON instead of binary video
   } catch (err) {
     console.error("🔥 /composeImage error:", err.message);
     res.status(400).json({ error: err.message });
