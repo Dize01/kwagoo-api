@@ -194,7 +194,7 @@ try {
   const fileName = path.basename(outputImg);
   console.log(" File name " + fileName);
   return {
-    url: `/output/${fileName}`
+    url: `https://api2.kwagoo.com/output/${fileName}`
   };
 
 } catch (err) {
