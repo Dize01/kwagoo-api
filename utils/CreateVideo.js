@@ -138,13 +138,12 @@ async function createVideo(payload = {}) {
 
 
 
-  if (audioPath) {
+  if (Number.isFinite(length) && length > 0) {
+    cmdParts.push(`-t ${length}`);
+  } else if (audioPath) {
     cmdParts.push(`-shortest`);
   }
 
-  if (Number.isFinite(length) && length > 0) {
-    cmdParts.push(`-t ${length}`);
-  }
 
   cmdParts.push(`"${outputPath}"`);
   const cmd = cmdParts.join(" ");
