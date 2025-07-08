@@ -16,7 +16,11 @@ const DEFAULT_FONT = process.platform === "win32"
   : "/usr/share/fonts/truetype/msttcorefonts/arial.ttf";
 
 const escapeFFmpegText = s =>
-  s.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/:/g, "\\:");
+  s.replace(/\\/g, "\\\\")
+   .replace(/'/g, "\\'")
+   .replace(/:/g, "\\:")
+   .replace(/[“”]/g, '"')       // ← replace smart double quotes
+   .replace(/[‘’]/g, "'");      // ← replace smart single quotes
 
 function wrapLines(str, maxChars) {
   const words = str.split(" ");
