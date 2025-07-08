@@ -16,12 +16,7 @@ const DEFAULT_FONT = process.platform === "win32"
   : "/usr/share/fonts/truetype/msttcorefonts/arial.ttf";
 
 const escapeFFmpegText = s =>
-  s.replace(/\\/g, "\\\\")       // escape backslashes
-   .replace(/:/g, "\\:")         // escape colons
-   .replace(/'/g, "\\'")         // escape single quotes
-   .replace(/"/g, '\\"')         // escape double quotes ← this is the new key
-   .replace(/[“”]/g, '"')        // replace curly quotes
-   .replace(/[‘’]/g, "'");       // replace curly single quotes
+  s.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/:/g, "\\:");
 
 function wrapLines(str, maxChars) {
   const words = str.split(" ");
@@ -115,8 +110,7 @@ async function createVideo(payload = {}) {
     });
   });
 
-  //chains.push(`${prevLabel}copy[out]`);
-  chains.push(`${prevLabel}[out]`);
+  chains.push(`${prevLabel}copy[out]`);
   const filterComplex = chains.join(";");
 
   const inputs = [
