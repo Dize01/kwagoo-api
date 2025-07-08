@@ -110,7 +110,7 @@ async function createVideo(payload = {}) {
     });
   });
 
-  chains.push(`${prevLabel}copy[out]`);
+  chains.push(`${prevLabel}[out]`);
   const filterComplex = chains.join(";");
 
   const inputs = [
