@@ -46,6 +46,7 @@ async function createVideo(payload = {}) {
   const videoPath = path.join(containerPath, "video.mp4");
   const outputPath = path.join(OUT_DIR, `${containerId}.mp4`);
 
+
   const audioPath = fs.existsSync(path.join(containerPath, "audio.mp3"))
     ? path.join(containerPath, "audio.mp3")
     : null;
@@ -58,6 +59,7 @@ async function createVideo(payload = {}) {
 
   const chains = [`[0:v]scale=1080:1920[scaled]`]; // exact 9:16
   let prevLabel = "[scaled]";
+
 
   elements.forEach((el, idx) => {
     if (el.Type !== "Text" || typeof el.Value !== "string") return;
@@ -93,8 +95,7 @@ async function createVideo(payload = {}) {
         xExpr = Number.isFinite(el.xpos) ? el.xpos : 10;
       }
 
-      const isLastLine = (idx === elements.length - 1) && (i === lines.length - 1);
-      const label = isLastLine ? "[out]" : `[t${idx}_${i}]`;
+      const label = `[t${idx}_${i}]`;
       chains.push(
         `${prevLabel}` +
         `drawtext=fontfile='${escFont}'` +
@@ -109,6 +110,7 @@ async function createVideo(payload = {}) {
     });
   });
 
+  chains.push(`${prevLabel}[out]`);
   const filterComplex = chains.join(";");
 
   const inputs = [
@@ -127,18 +129,21 @@ async function createVideo(payload = {}) {
     ...inputs,
     `-filter_complex "${filterComplex}"`,
     ...maps,
-    `-c:v libx264 -profile:v baseline -level 3.1 -pix_fmt yuv420p`,
-    `-r 30`,
+    `-c:v libx264 -profile:v baseline -level 3.1 -pix_fmt yuv420p`, // <– required pixel format
+    `-r 30`,                      // frame rate
     `-crf 23 -preset veryfast`,
     `-c:a aac -b:a 128k -ar 48000`,
     `-movflags +faststart`
   ];
+
+
 
   if (Number.isFinite(length) && length > 0) {
     cmdParts.push(`-t ${length}`);
   } else if (audioPath) {
     cmdParts.push(`-shortest`);
   }
+
 
   cmdParts.push(`"${outputPath}"`);
   const cmd = cmdParts.join(" ");
@@ -151,6 +156,9 @@ async function createVideo(payload = {}) {
       containerId,
       url: `https://api2.kwagoo.com/output/${containerId}.mp4`
     };
+
+    //const buffer = await fs.promises.readFile(outputPath);
+    //return buffer;
   } catch (err) {
     console.error("🔥 FFmpeg failed:", err.stderr || err.message);
     throw err;
