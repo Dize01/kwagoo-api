@@ -1,3 +1,4 @@
+// utils/CreateVideo.js
 const ffmpegPath = require("ffmpeg-static");
 const { exec }   = require("child_process");
 const util       = require("util");
@@ -14,11 +15,8 @@ const DEFAULT_FONT = process.platform === "win32"
   ? "C:/Windows/Fonts/arial.ttf"
   : "/usr/share/fonts/truetype/msttcorefonts/arial.ttf";
 
-// Escape for FFmpeg drawtext: backslashes, colons, then single quotes
 const escapeFFmpegText = s =>
-  s.replace(/\\/g, "\\\\")
-   .replace(/:/g, "\\:")
-   .replace(/'/g, "\\\\'");
+  s.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/:/g, "\\:");
 
 function wrapLines(str, maxChars) {
   const words = str.split(" ");
@@ -48,7 +46,6 @@ async function createVideo(payload = {}) {
   const videoPath = path.join(containerPath, "video.mp4");
   const outputPath = path.join(OUT_DIR, `${containerId}.mp4`);
 
-  // Optional audio
   const audioPath = fs.existsSync(path.join(containerPath, "audio.mp3"))
     ? path.join(containerPath, "audio.mp3")
     : null;
@@ -59,8 +56,7 @@ async function createVideo(payload = {}) {
 
   ensureDir(OUT_DIR);
 
-  // Build filter chains
-  const chains = [`[0:v]scale=1080:1920[scaled]`];
+  const chains = [`[0:v]scale=1080:1920[scaled]`]; // exact 9:16
   let prevLabel = "[scaled]";
 
   elements.forEach((el, idx) => {
@@ -74,20 +70,19 @@ async function createVideo(payload = {}) {
 
     const lines = wrapLines(el.Value, maxChars);
 
-    // Resolve font file
     const style    = el.FontStyle || null;
     const fontFile = style
       ? (process.platform === "win32"
           ? `C:/Windows/Fonts/${style}.ttf`
           : `/usr/share/fonts/truetype/msttcorefonts/${style}.ttf`)
       : DEFAULT_FONT;
-    const escFont = fontFile.replace(/\\/g, "\\\\").replace(/:/g, "\\:");
+    const escFont  = fontFile.replace(/\\/g, "\\\\").replace(/:/g, "\\:");
 
     const lineHeight = Math.round(fontSize * 1.2);
 
     lines.forEach((ln, i) => {
       const safeText = escapeFFmpegText(ln);
-      const yPos = baseY + i * lineHeight;
+      const yPos     = baseY + i * lineHeight;
 
       let xExpr;
       if (align === "center") {
@@ -98,7 +93,8 @@ async function createVideo(payload = {}) {
         xExpr = Number.isFinite(el.xpos) ? el.xpos : 10;
       }
 
-      const label = `[t${idx}_${i}]`;
+      const isLastLine = (idx === elements.length - 1) && (i === lines.length - 1);
+      const label = isLastLine ? "[out]" : `[t${idx}_${i}]`;
       chains.push(
         `${prevLabel}` +
         `drawtext=fontfile='${escFont}'` +
@@ -113,14 +109,8 @@ async function createVideo(payload = {}) {
     });
   });
 
-  // Final pass: label the output stream
-  chains.push(`${prevLabel}copy[out]`);
-
-  // Join filter_complex
   const filterComplex = chains.join(";");
-  console.log("FILTER_GRAPH:", filterComplex);
 
-  // Build FFmpeg command
   const inputs = [
     ...(audioPath ? ["-stream_loop", "-1"] : []),
     `-i "${videoPath}"`,
@@ -138,7 +128,8 @@ async function createVideo(payload = {}) {
     `-filter_complex "${filterComplex}"`,
     ...maps,
     `-c:v libx264 -profile:v baseline -level 3.1 -pix_fmt yuv420p`,
-    `-r 30 -crf 23 -preset veryfast`,
+    `-r 30`,
+    `-crf 23 -preset veryfast`,
     `-c:a aac -b:a 128k -ar 48000`,
     `-movflags +faststart`
   ];
@@ -146,8 +137,6 @@ async function createVideo(payload = {}) {
   if (Number.isFinite(length) && length > 0) {
     cmdParts.push(`-t ${length}`);
   } else if (audioPath) {
-    // only stop when audio ends if no length specified
-    // *remove* -shortest to respect length, use only here if desired
     cmdParts.push(`-shortest`);
   }
 
@@ -155,7 +144,6 @@ async function createVideo(payload = {}) {
   const cmd = cmdParts.join(" ");
   console.log("▶️ FFmpeg command:\n", cmd);
 
-  // Execute and return URL
   try {
     const { stderr } = await execAsync(cmd);
     if (stderr) console.error("⚠️ FFmpeg stderr:\n", stderr);
@@ -166,6 +154,10 @@ async function createVideo(payload = {}) {
   } catch (err) {
     console.error("🔥 FFmpeg failed:", err.stderr || err.message);
     throw err;
+  } finally {
+    try {
+      //await fs.promises.unlink(outputPath);
+    } catch {}
   }
 }
 
