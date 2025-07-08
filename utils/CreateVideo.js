@@ -16,11 +16,12 @@ const DEFAULT_FONT = process.platform === "win32"
   : "/usr/share/fonts/truetype/msttcorefonts/arial.ttf";
 
 const escapeFFmpegText = s =>
-  s.replace(/\\/g, "\\\\")
-   .replace(/'/g, "\\'")
-   .replace(/:/g, "\\:")
-   .replace(/[“”]/g, '"')       // ← replace smart double quotes
-   .replace(/[‘’]/g, "'");      // ← replace smart single quotes
+  s.replace(/\\/g, "\\\\")       // escape backslashes
+   .replace(/:/g, "\\:")         // escape colons
+   .replace(/'/g, "\\'")         // escape single quotes
+   .replace(/"/g, '\\"')         // escape double quotes ← this is the new key
+   .replace(/[“”]/g, '"')        // replace curly quotes
+   .replace(/[‘’]/g, "'");       // replace curly single quotes
 
 function wrapLines(str, maxChars) {
   const words = str.split(" ");
