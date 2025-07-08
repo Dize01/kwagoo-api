@@ -15,8 +15,13 @@ const DEFAULT_FONT = process.platform === "win32"
   ? "C:/Windows/Fonts/arial.ttf"
   : "/usr/share/fonts/truetype/msttcorefonts/arial.ttf";
 
-const escapeFFmpegText = s =>
-  s.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/:/g, "\\:");
+//const escapeFFmpegText = s =>
+//  s.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/:/g, "\\:");
+const escapeFFmpegText = (text) =>
+  text
+    .replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/[“”]/g, '"').replace(/[‘’]/g, "'");     // normalize curly single quotes
+
+
 
 function wrapLines(str, maxChars) {
   const words = str.split(" ");
