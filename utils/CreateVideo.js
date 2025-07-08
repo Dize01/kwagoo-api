@@ -1,4 +1,3 @@
-// utils/CreateVideo.js
 const ffmpegPath = require("ffmpeg-static");
 const { exec }   = require("child_process");
 const util       = require("util");
@@ -15,8 +14,11 @@ const DEFAULT_FONT = process.platform === "win32"
   ? "C:/Windows/Fonts/arial.ttf"
   : "/usr/share/fonts/truetype/msttcorefonts/arial.ttf";
 
+// Escape for FFmpeg drawtext: backslashes, colons, then single quotes
 const escapeFFmpegText = s =>
-  s.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/:/g, "\\:");
+  s.replace(/\\/g, "\\\\")
+   .replace(/:/g, "\\:")
+   .replace(/'/g, "\\\\'");
 
 function wrapLines(str, maxChars) {
   const words = str.split(" ");
@@ -46,7 +48,7 @@ async function createVideo(payload = {}) {
   const videoPath = path.join(containerPath, "video.mp4");
   const outputPath = path.join(OUT_DIR, `${containerId}.mp4`);
 
-
+  // Optional audio
   const audioPath = fs.existsSync(path.join(containerPath, "audio.mp3"))
     ? path.join(containerPath, "audio.mp3")
     : null;
@@ -57,9 +59,9 @@ async function createVideo(payload = {}) {
 
   ensureDir(OUT_DIR);
 
-  const chains = [`[0:v]scale=1080:1920[scaled]`]; // exact 9:16
+  // Build filter chains
+  const chains = [`[0:v]scale=1080:1920[scaled]`];
   let prevLabel = "[scaled]";
-
 
   elements.forEach((el, idx) => {
     if (el.Type !== "Text" || typeof el.Value !== "string") return;
@@ -72,19 +74,20 @@ async function createVideo(payload = {}) {
 
     const lines = wrapLines(el.Value, maxChars);
 
+    // Resolve font file
     const style    = el.FontStyle || null;
     const fontFile = style
       ? (process.platform === "win32"
           ? `C:/Windows/Fonts/${style}.ttf`
           : `/usr/share/fonts/truetype/msttcorefonts/${style}.ttf`)
       : DEFAULT_FONT;
-    const escFont  = fontFile.replace(/\\/g, "\\\\").replace(/:/g, "\\:");
+    const escFont = fontFile.replace(/\\/g, "\\\\").replace(/:/g, "\\:");
 
     const lineHeight = Math.round(fontSize * 1.2);
 
     lines.forEach((ln, i) => {
       const safeText = escapeFFmpegText(ln);
-      const yPos     = baseY + i * lineHeight;
+      const yPos = baseY + i * lineHeight;
 
       let xExpr;
       if (align === "center") {
@@ -110,9 +113,14 @@ async function createVideo(payload = {}) {
     });
   });
 
+  // Final pass: label the output stream
   chains.push(`${prevLabel}copy[out]`);
-  const filterComplex = chains.join(";");
 
+  // Join filter_complex
+  const filterComplex = chains.join(";");
+  console.log("FILTER_GRAPH:", filterComplex);
+
+  // Build FFmpeg command
   const inputs = [
     ...(audioPath ? ["-stream_loop", "-1"] : []),
     `-i "${videoPath}"`,
@@ -129,26 +137,25 @@ async function createVideo(payload = {}) {
     ...inputs,
     `-filter_complex "${filterComplex}"`,
     ...maps,
-    `-c:v libx264 -profile:v baseline -level 3.1 -pix_fmt yuv420p`, // <– required pixel format
-    `-r 30`,                      // frame rate
-    `-crf 23 -preset veryfast`,
+    `-c:v libx264 -profile:v baseline -level 3.1 -pix_fmt yuv420p`,
+    `-r 30 -crf 23 -preset veryfast`,
     `-c:a aac -b:a 128k -ar 48000`,
     `-movflags +faststart`
   ];
 
-
-
   if (Number.isFinite(length) && length > 0) {
     cmdParts.push(`-t ${length}`);
   } else if (audioPath) {
+    // only stop when audio ends if no length specified
+    // *remove* -shortest to respect length, use only here if desired
     cmdParts.push(`-shortest`);
   }
-
 
   cmdParts.push(`"${outputPath}"`);
   const cmd = cmdParts.join(" ");
   console.log("▶️ FFmpeg command:\n", cmd);
 
+  // Execute and return URL
   try {
     const { stderr } = await execAsync(cmd);
     if (stderr) console.error("⚠️ FFmpeg stderr:\n", stderr);
@@ -156,16 +163,9 @@ async function createVideo(payload = {}) {
       containerId,
       url: `https://api2.kwagoo.com/output/${containerId}.mp4`
     };
-
-    //const buffer = await fs.promises.readFile(outputPath);
-    //return buffer;
   } catch (err) {
     console.error("🔥 FFmpeg failed:", err.stderr || err.message);
     throw err;
-  } finally {
-    try {
-      //await fs.promises.unlink(outputPath);
-    } catch {}
   }
 }
 
