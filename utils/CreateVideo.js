@@ -15,8 +15,15 @@ const DEFAULT_FONT = process.platform === "win32"
   ? "C:/Windows/Fonts/arial.ttf"
   : "/usr/share/fonts/truetype/msttcorefonts/arial.ttf";
 
-const escapeFFmpegText = s =>
-  s.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/:/g, "\\:");
+// Improved escape function for FFmpeg drawtext
+const escapeFFmpegText = s => {
+  if (!s) return '';
+  return String(s)
+    .replace(/\\/g, '\\\\')     // escape backslashes first
+    .replace(/'/g, "'\\\\\\''") // escape single quotes by wrapping in escaped quotes
+    .replace(/%/g, '%%')        // escape percent signs
+    .replace(/:/g, '\\:');      // escape colons
+};
 
 function wrapLines(str, maxChars) {
   const words = str.split(" ");
@@ -62,7 +69,12 @@ async function createVideo(payload = {}) {
 
 
   elements.forEach((el, idx) => {
-    if (el.Type !== "Text" || typeof el.Value !== "string") return;
+    // Validate text elements
+    elements.forEach(el => {
+      if (el.Type === "Text" && typeof el.Value !== "string") {
+        throw new Error(`Invalid text element value: ${el.Value}`);
+      }
+    });
 
     const fontSize  = Number.isFinite(el.FontSize) ? el.FontSize : 48;
     const fontColor = el.FontColor || "white";
@@ -96,10 +108,11 @@ async function createVideo(payload = {}) {
       }
 
       const label = `[t${idx}_${i}]`;
+      // In the drawtext command construction:
       chains.push(
         `${prevLabel}` +
         `drawtext=fontfile='${escFont}'` +
-        `:text='${safeText}'` +
+        `:text='${safeText}'` +  // This is now properly escaped
         `:fontcolor=${fontColor}` +
         `:fontsize=${fontSize}` +
         `:x=${xExpr}` +
