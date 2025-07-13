@@ -16,13 +16,26 @@ const DEFAULT_FONT = process.platform === "win32"
   : "/usr/share/fonts/truetype/msttcorefonts/arial.ttf";
 
 // Improved escape function for FFmpeg drawtext
-const escapeFFmpegText = s => {
+/*const escapeFFmpegText = s => {
   if (!s) return '';
   return String(s)
     .replace(/\\/g, '\\\\')     // escape backslashes first
     .replace(/'/g, "'\\\\\\''") // escape single quotes by wrapping in escaped quotes
     .replace(/%/g, '%%')        // escape percent signs
     .replace(/:/g, '\\:');      // escape colons
+};*/
+
+// Improved escape function for FFmpeg drawtext
+const escapeFFmpegText = (text) => {
+  if (!text) return '';
+  return String(text)
+    .replace(/\\/g, '')     // escape backslashes first
+    .replace(/:/g, '')       // escape colons
+    .replace(/'/g, '')     // escape single quotes correctly
+    .replace(/%/g, '')       // escape percent signs
+    .replace(/"/g, '')       // escape double quotes
+    .replace(/[“”]/g, '')      // replace curly quotes
+    .replace(/[‘’]/g, "");     // replace curly apostrophes
 };
 
 function wrapLines(str, maxChars) {
